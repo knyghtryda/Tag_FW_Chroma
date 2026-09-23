@@ -271,7 +271,7 @@ Chroma_Tag_FW/builds/chroma29/
        ↓
 [Receive Data Avail]
        ↓
-[Data pending?] ─No→ [Sleep for nextCheckIn seconds]
+[Data pending?] ─No→ [Sleep for nextCheckIn]
        ↓                            ↓
       Yes                           └─→ [Wakeup timer] ─→ [Wake from Sleep]
        ↓
@@ -283,7 +283,7 @@ Chroma_Tag_FW/builds/chroma29/
        ↓
 [Update Display]
        ↓
-[Sleep for nextCheckIn seconds]
+[Sleep for nextCheckIn]
 ```
 
 ### 2. Sleep & Power Management
@@ -305,11 +305,14 @@ doSleep(uint32_t milliseconds)
 - Adjusts sleep interval based on AP reliability
 - Falls back to longer intervals if AP unreachable
 
-**Sleep value from AP** (`main.c:183-190`):
+**Sleep value from AP** (`main.c:182-190`):
 ```c
 if (nextCheckInFromAP) {
-    // Value is in SECONDS (0-65535)
-    doSleep(nextCheckInFromAP * 1000UL);
+    // bit 15 set: low 15 bits are SECONDS; otherwise value is MINUTES
+    if (nextCheckInFromAP & 0x8000)
+        doSleep((nextCheckInFromAP & 0x7FFF) * 1000UL);
+    else
+        doSleep(nextCheckInFromAP * 60000UL);
 }
 ```
 
@@ -403,7 +406,7 @@ void tagAssociated() {
     if (avail == NULL) {
         nextCheckInFromAP = 0;  // No response, use algorithm
     } else {
-        nextCheckInFromAP = avail->nextCheckIn;  // AP says sleep this long (SECONDS)
+        nextCheckInFromAP = avail->nextCheckIn;  // AP says sleep this long (see units below)
 
         if (avail->dataType != DATATYPE_NOUPDATE) {
             processAvailDataInfo(avail);  // Download & display update
@@ -412,16 +415,22 @@ void tagAssociated() {
 
     // Sleep
     if (nextCheckInFromAP) {
-        doSleep(nextCheckInFromAP * 1000UL);  // Sleep for AP-specified time
+        // Sleep for AP-specified time (minutes, or seconds if bit 15 set)
     } else {
         doSleep(getNextSleep() * 1000UL);     // Use power-saving algorithm
     }
 }
 ```
 
-**Key point** (line 185): Sleep value is in **seconds**:
+**Key point** (`main.c:182-190`): the unit depends on bit 15:
 ```c
-doSleep(nextCheckInFromAP * 1000UL);  // seconds → milliseconds
+if (nextCheckInFromAP) {
+    // bit 15 set: low 15 bits are SECONDS; otherwise value is MINUTES
+    if (nextCheckInFromAP & 0x8000)
+        doSleep((nextCheckInFromAP & 0x7FFF) * 1000UL);
+    else
+        doSleep(nextCheckInFromAP * 60000UL);
+}
 ```
 
 ### `OEPL/powermgt.c`
@@ -606,7 +615,7 @@ struct AvailDataInfo {
     uint32_t dataSize;
     uint8_t dataType;
     uint8_t dataTypeArgument;
-    uint16_t nextCheckIn;  // SECONDS (0-65535)
+    uint16_t nextCheckIn;  // MINUTES, or SECONDS in low 15 bits if bit 15 set
 } __packed;
 ```
 
@@ -640,7 +649,7 @@ sdcc -v
 ### 2. Clone Repository
 
 ```bash
-git clone https://github.com/mLupine/Tag_FW_Chroma.git
+git clone https://github.com/knyghtryda/Tag_FW_Chroma.git
 cd Tag_FW_Chroma
 git submodule update --init --recursive  # Fetch shared/ submodule
 ```
@@ -827,7 +836,7 @@ struct PendingInfo {
     uint32_t osUpdateSize;      // Firmware size in bytes
     uint32_t nextCheckinDelay;  // Sleep duration (milliseconds)
     // NOTE: In OEPL protocol, this is sent as AvailDataInfo with
-    //       nextCheckIn field in SECONDS, not PendingInfo
+    //       nextCheckIn in MINUTES (or SECONDS if bit 15 set)
 };
 ```
 
@@ -886,14 +895,20 @@ XRAM:   2145 /  3490 bytes (61%)  ← OK
 
 ### 3. Sleep Time Units
 
-❌ **Old code used minutes, new code uses seconds**
+❌ **Assuming `nextCheckIn` is always seconds (or always minutes)**
 
-✅ **Always seconds** (`main.c:185`):
+✅ **Minutes by default; seconds when bit 15 is set** (`main.c:182-190`):
 ```c
-doSleep(nextCheckInFromAP * 1000UL);  // seconds → ms
+if (nextCheckInFromAP) {
+    // bit 15 set: low 15 bits are SECONDS; otherwise value is MINUTES
+    if (nextCheckInFromAP & 0x8000)
+        doSleep((nextCheckInFromAP & 0x7FFF) * 1000UL);
+    else
+        doSleep(nextCheckInFromAP * 60000UL);
+}
 ```
 
-**Max sleep**: 65535 seconds = 18.2 hours
+**Max sleep**: 32767 minutes (minutes mode) or 32767 seconds (bit-15 mode)
 
 ### 4. Build Target Confusion
 
@@ -981,8 +996,8 @@ make BUILD=chroma29           # Then build
 
 ## Additional Resources
 
-- **Main Repo**: https://github.com/mLupine/Tag_FW_Chroma
-- **Shared Definitions**: https://github.com/mLupine/Shared_OEPL_Definitions
+- **Main Repo**: https://github.com/knyghtryda/Tag_FW_Chroma
+- **Shared Definitions**: https://github.com/OpenEPaperLink/Shared_OEPL_Definitions
 - **OpenEPaperLink Wiki**: https://github.com/OpenEPaperLink/OpenEPaperLink/wiki/Chroma-Series-SubGhz-Tags
 - **SDCC Manual**: http://sdcc.sourceforge.net/doc/sdccman.pdf
 - **8051 Reference**: Various online resources for 8051 architecture
