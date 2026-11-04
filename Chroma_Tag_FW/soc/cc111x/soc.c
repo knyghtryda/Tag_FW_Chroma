@@ -8,6 +8,7 @@
 #include "powermgt.h"
 #include "settings.h"
 #include "logging.h"
+#include "timer.h"
 
 #define pHARD_CODED_SN  ((const void __xdata*) &gDefaultEEPROM[8])
 
@@ -15,6 +16,8 @@ void LoadGlobalsFromEEPROM();
 void ResetFactoryNVRAM(void);
 
 char __xdata gMacString[17];
+// Set when the factory NVRAM must be (re)written: no valid SN in it, or a
+// patched SN in gDefaultEEPROM differs from it.
 __bit gEEpromFailure;
 
 #pragma callee_saves prvReadSetting
@@ -27,15 +30,16 @@ static int8_t prvReadSetting(uint8_t type, uint8_t __xdata *dst, uint8_t maxLen)
    __bit found = false;
    
    for (pg = 0; pg < 10; pg++) {
-      uint16_t __pdata addr = mathPrvMul16x8(EEPROM_ERZ_SECTOR_SZ, pg);
+      uint16_t __pdata addr = (uint16_t)pg * EEPROM_ERZ_SECTOR_SZ;
       uint16_t __pdata ofst = 4;
       
       eepromRead(addr, tmpBuf, 4);
-      if (xMemEqual(tmpBuf, magicNum, 4)) {
+      if (xMemEqual4(tmpBuf, magicNum)) {
          while (ofst < EEPROM_ERZ_SECTOR_SZ) {
          // first byte is type, (0xff for done), second is length
             eepromRead(addr + ofst, tmpBuf, 2);
-            if (tmpBuf[0] == 0xff) {
+         // a length < 2 can't be walked (seen on Chroma60), stop here
+            if (tmpBuf[0] == 0xff || tmpBuf[1] < 2) {
                break;
             }
             
@@ -66,7 +70,17 @@ void boardInitStage2(void)
 #endif
    LoadGlobalsFromEEPROM();
 #ifdef RELEASE_BUILD
-   if(gEEpromFailure) {
+// A single failed read must not wipe the factory NVRAM: after a bouncy
+// battery insertion the SPI flash may not be ready yet, so retry first.
+   for(uint8_t Retry = 0; gEEpromFailure && Retry < 3; Retry++) {
+      timerDelay(TIMER_TICKS_PER_SECOND / 10);
+      eepromWakeFromPowerdown();
+      LoadGlobalsFromEEPROM();
+   }
+// Only write the NVRAM if the flash answers, otherwise the decision is based
+// on reads of a flash that isn't there.  main() then shows the "no EEPROM"
+// screen, and the NVRAM is read again when the battery is reinserted.
+   if(gEEpromFailure && eepromResponds()) {
    // Not good!  Try to set defaults so we can communicate
       NV_DATA_LOG("First call to LoadGlobalsFromEEPROM failed\n");
       ResetFactoryNVRAM();
@@ -106,8 +120,8 @@ void LoadGlobalsFromEEPROM()
 // If the built in default SN has been patched make sure it matches the SN
 // in EEPROM.  This allows recovery from accidentially programming the same
 // SN into two displays
-   if(!xMemEqual(pHARD_CODED_SN,&gTempBuf320[16],4) && 
-      !xMemEqual(pHARD_CODED_SN,&gTempBuf320[2],4))
+   if(!xMemEqual4(pHARD_CODED_SN,&gTempBuf320[16]) &&
+      !xMemEqual4(pHARD_CODED_SN,&gTempBuf320[2]))
    {  // The hardcoded SN is not the default (all zeros) and the SN in
       // EEPROM does not match, set EEPROM to the (new) defaults
       NV_DATA_LOG("Set SN to patched value\n");
@@ -142,29 +156,27 @@ void LoadGlobalsFromEEPROM()
    LOGA("HW variant %d\n",HW_VARIANT);
 #endif
 
-   spr(gMacString,"%02X%02X",mSelfMac[7],mSelfMac[6]);
-   spr(gMacString+4,"%02X%02X",mSelfMac[5],mSelfMac[4]);
-   spr(gMacString+8,"%02X%02X",mSelfMac[3],mSelfMac[2]);
-   spr(gMacString+12,"%02X%02X",mSelfMac[1],mSelfMac[0]);
+   /* The formatter's addressed 64-bit hex mode preserves all leading zeros
+    * and emits the same sixteen uppercase digits, most-significant byte first. */
+   spr(gMacString,"%*016llX",(uintptr_near_t)mSelfMac);
 #ifdef SCREEN_EXPECTS_VCOM
    if(prvReadSetting(0x23,&mScreenVcom,1) < 0) {
       NV_DATA_LOG("failed to get VCOM\n");
-      return;
+   // keep the SN, a missing calibration value is no reason to reset the NVRAM
+      mScreenVcom = DEFAULT_VCOM;
    }
    NV_DATA_LOG("VCOM: 0x%02x\n", mScreenVcom);
 #endif
    
    if(prvReadSetting(0x12,&mAdcSlope,2) < 0) {
       NV_DATA_LOG("failed to get ADC slope\n");
-   // reset the EEPROM to the defaults
-      return;
+      mAdcSlope = DEFAULT_ADC_SLOPE;
    }
    NV_DATA_LOG("ADC slope %d\n",mAdcSlope);
 
    if(prvReadSetting(0x09,&mAdcIntercept,2) < 0) {
       NV_DATA_LOG("failed to get ADC intercept\n");
-   // reset the EEPROM to the defaults
-      return;
+      mAdcIntercept = DEFAULT_ADC_INTERCEPT;
    }
    NV_DATA_LOG("ADC mAdcIntercept %d\n",mAdcIntercept);
 
@@ -321,6 +333,7 @@ void clockingAndIntsInit(void)
    SLEEP = SLEEP_OSC_PD;   //power down the unused (HFRC oscillator)
 }
 
+#if !defined(RELEASE_BUILD)
 uint8_t rndGen8(void)
 {
    ADCCON1 |= 4;
@@ -351,4 +364,4 @@ void rndSeed(uint8_t seedA, uint8_t seedB)
    RNDL = seedA;
    RNDL = seedB;
 }
-
+#endif

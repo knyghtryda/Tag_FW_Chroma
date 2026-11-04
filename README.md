@@ -22,6 +22,7 @@ Currently the following tags are supported and support for the Chroma21 is plann
 | Chroma42 | "JH1xxxxxxxB" | chroma42_8176 | chroma42_8176_full_\<version\>.bin |
 | Chroma74 | "JM1xxxxxxxB" | chroma74y | chroma74y_full_\<version\>.bin |
 | Chroma74 | "JL1xxxxxxxB" | chroma74r | chroma74r_full_\<version\>.bin |
+| Chroma60 | "JDxxxxxxxxx" | chroma60 | chroma60_full_\<version\>.bin |
 
 Where \<version\> is the 4 digit firmware version in hex for example "chroma29_8151_full_0012.bin"
 
@@ -30,8 +31,10 @@ Where \<version\> is the 4 digit firmware version in hex for example "chroma29_8
 
 Binaries are available here:  https://github.com/OpenEPaperLink/OpenEPaperLink/tree/master/binaries/Tag
 
-Refer the table above for the correct filename.
+Refer the table above for the correct filename. 
 
+Version `0x0016` adds packed-row G5 image decompression while retaining raw image support. See [G5 file handling, AP configuration and validation](docs/g5.md) before enabling compressed images or publishing new binaries.
+ 
 ## Building from Source
 
 ### Quick Start: Build All Variants (macOS/Linux)

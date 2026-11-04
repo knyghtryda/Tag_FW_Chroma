@@ -202,25 +202,29 @@ static const uint8_t __code gStartRefresh[] = {
 };
 
 
-#pragma callee_saves screenPrvSendCommand
-static inline void screenPrvSendCommand(uint8_t cmdByte)
-{
-   screenPrvWaitByteSent();
 #ifdef DEBUG_SCREEN_INIT
-   if(gDataByteLogged > 0) {
-      SCR_INIT_LOG("\n");
-      gDataByteLogged = 0;
-   }
-   SCR_INIT_LOG("Cmd 0x%02x\n",cmdByte);
+#define LOG_EPD_COMMAND(command_) do { \
+   if(gDataByteLogged > 0) { \
+      SCR_INIT_LOG("\n"); \
+      gDataByteLogged = 0; \
+   } \
+   SCR_INIT_LOG("Cmd 0x%02x\n",command_); \
+} while (0)
+#else
+#define LOG_EPD_COMMAND(command_) do { } while (0)
 #endif
 
-   P0 &= (uint8_t) ~P0_EPD_D_nCMD;
-   __asm__("nop");
-   screenByteTx(cmdByte);
-   __asm__("nop");
-   screenPrvWaitByteSent();
-   P0 |= P0_EPD_D_nCMD;
-}
+#define screenPrvSendCommand(cmdByte) do { \
+   uint8_t epdCommandByte_ = (cmdByte); \
+   screenPrvWaitByteSent(); \
+   LOG_EPD_COMMAND(epdCommandByte_); \
+   P0 &= (uint8_t) ~P0_EPD_D_nCMD; \
+   __asm__("nop"); \
+   screenByteTx(epdCommandByte_); \
+   __asm__("nop"); \
+   screenPrvWaitByteSent(); \
+   P0 |= P0_EPD_D_nCMD; \
+} while (0)
 
 void P1INT_ISR(void) __interrupt (15)
 {
@@ -303,7 +307,7 @@ void screenInitGPIO(bool bActivate)
 {
    if(bActivate) {
    // Nothing special to do
-      if(!(mSelfMac[3] & 0xf0)) {
+      if(!(mSelfMac[3] & 0xf0) && !SN_IS_ZERO()) {
       // JA0xxxxxxx devices do not implement EPD power control.
       // 
       // Configure all control pins as outputs and disable pull-up resistors 
@@ -318,7 +322,7 @@ void screenInitGPIO(bool bActivate)
    // Disconnect the P1 EPD SPI pins from USART0 and connect them to GPIO
       P1SEL &= ~(P1_EPD_SCK | P1_EPD_DI);
 
-      if(mSelfMac[3] & 0xf0) {
+      if((mSelfMac[3] & 0xf0) || SN_IS_ZERO()) {
       // JA1xxxxxxx devices implement EPD power control.
       // Drive all of the control pins LOW to avoid back powering the EPD via the 
       // control pins

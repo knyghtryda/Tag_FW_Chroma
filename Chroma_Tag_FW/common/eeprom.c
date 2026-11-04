@@ -104,6 +104,19 @@ static void eepromWriteLL(uint32_t addr, const void __xdata *srcP, uint16_t len)
    eepromPrvDeselect();
 }
 
+// True if the SPI flash answers a JEDEC ID read.  A manufacturer ID of 0x00
+// or 0xff means nothing is responding, e.g. the flash isn't powered up yet.
+__bit eepromResponds(void)
+{
+   uint8_t Mfg;
+
+   eepromPrvSelect();
+   eepromByte(0x9f);
+   Mfg = eepromByte(0x00);
+   eepromPrvDeselect();
+   return Mfg != 0x00 && Mfg != 0xff;
+}
+
 #ifndef DEBUGEEPROM
 void eepromDeepPowerDown(void) 
 {
@@ -314,6 +327,9 @@ void eepromWrite(uint32_t addr, const void __xdata *srcP, uint16_t len) __reentr
       src += lenNow;
       len -= lenNow;
    }
+   /* Do not let a following compressed-source refill or image-header read
+    * run while the final NOR page program is still busy. */
+   eepromPrvBusyWait();
 }
 
 bool eepromErase(uint32_t addr, uint16_t nSec) __reentrant 
