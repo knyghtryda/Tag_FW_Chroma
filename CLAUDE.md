@@ -25,10 +25,12 @@
 
 | Tag Model | Screen Size | SN Format | Build Target | Description |
 |-----------|-------------|-----------|--------------|-------------|
+| **Chroma21** | 2.1" | JG1xxxxxxxB | `chroma21` | B/W/Y display, 212x104, UC8154 |
 | **Chroma29** | 2.9" | JA0xxxxxxxB<br>JC0xxxxxxxB | `chroma29` | B/W or B/W/R display |
 | **Chroma29** (8151) | 2.9" | JA1xxxxxxxC | `chroma29_8151` | Variant with different screen controller |
 | **Chroma42** | 4.2" | JC0xxxxxxxB | `chroma42` | B/W or B/W/R display |
 | **Chroma42** (8176) | 4.2" | JH1xxxxxxxB | `chroma42_8176` | Variant with different screen controller |
+| **Chroma60** | 6.0" | JDxxxxxxxxx | `chroma60` | B/W/R display, 600x448, UC8159 |
 | **Chroma74** (Yellow) | 7.4" | JM1xxxxxxxB | `chroma74y` | B/W/Y display |
 | **Chroma74** (Red) | 7.4" | JL1xxxxxxxB | `chroma74r` | B/W/R display |
 

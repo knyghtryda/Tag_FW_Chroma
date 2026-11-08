@@ -12,7 +12,7 @@ For more info see the main projects [Wiki](https://github.com/OpenEPaperLink/Ope
 There is no need to build the tag firmware from source unless you want to 
 make changes.
 
-Currently the following tags are supported (Chroma21 support is a work in progress):
+Currently the following tags are supported:
 
 | Tag | SN Format | BUILD | Binary filename | 
 | - |-| -| -|
@@ -23,7 +23,7 @@ Currently the following tags are supported (Chroma21 support is a work in progre
 | Chroma74 | "JM1xxxxxxxB" | chroma74y | chroma74y_full_\<version\>.bin |
 | Chroma74 | "JL1xxxxxxxB" | chroma74r | chroma74r_full_\<version\>.bin |
 | Chroma60 | "JDxxxxxxxxx" | chroma60 | chroma60_full_\<version\>.bin |
-| Chroma21 (WIP) | "JG1xxxxxxxB" | chroma21 | chroma21_full_\<version\>.bin |
+| Chroma21 | "JG1xxxxxxxB" | chroma21 | chroma21_full_\<version\>.bin |
 
 Where \<version\> is the 4 digit firmware version in hex for example "chroma29_8151_full_0012.bin"
 

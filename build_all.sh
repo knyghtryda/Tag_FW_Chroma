@@ -34,10 +34,12 @@ REQUIRED_SDCC_VERSION="4.2.0"
 
 # Supported builds
 declare -a BUILDS=(
+    "chroma21"
     "chroma29"
     "chroma29_8151"
     "chroma42"
     "chroma42_8176"
+    "chroma60"
     "chroma74y"
     "chroma74r"
 )
@@ -173,7 +175,15 @@ build_summary() {
     local TOTAL=${#BUILDS[@]}
     local SUCCESS=0
     local FAILED=0
-    local PREBUILT_DIR="../../OpenEPaperLink/binaries/Tag"
+
+    # Ask the build system where release binaries land, so this can't drift if
+    # the Makefile's PREBUILT_DIR changes. Falls back to the known path (relative
+    # to the OEPL directory this runs from) if `make debug` can't be read.
+    local PREBUILT_DIR
+    PREBUILT_DIR=$(make debug BUILD="${BUILDS[0]}" 2>/dev/null | sed -n 's/^PREBUILT_DIR=//p')
+    if [ -z "$PREBUILT_DIR" ]; then
+        PREBUILT_DIR="releases/OpenEPaperLink/binaries/Tag"
+    fi
 
     for BUILD in "${BUILDS[@]}"; do
         local FULL_BIN=$(find "$PREBUILT_DIR" -name "${BUILD}_full_*.bin" -type f 2>/dev/null | head -1)
