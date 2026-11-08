@@ -3,47 +3,17 @@
 
 #include <stdint.h>
 
-#define SET_EPD_BS1(x)     do { __asm__("nop"); P0_0 = x; __asm__("nop"); } while(0)
-#define SET_EPD_nCS(x)     do { __asm__("nop"); P1_1 = x; __asm__("nop"); } while(0)
-#define SET_EPD_nCS1(x)    do { __asm__("nop"); P0_2 = x; __asm__("nop"); } while(0)
-#define EPD_BUSY()         (P1_0)
-#define SET_EPD_nRST(x)    do { __asm__("nop"); P1_2 = x; __asm__("nop"); } while(0)
-#define SET_EPD_nENABLE(x) do { __asm__("nop"); P0_6 = x; __asm__("nop"); } while(0)
-#define SET_EPD_DAT_CMD(x) do { __asm__("nop"); P0_7 = x; __asm__("nop"); } while(0)
-#define SET_EEPROM_CS(x)   do { __asm__("nop"); P2_0 = x; __asm__("nop"); } while(0)
+#include "boardPins.h"
 
-// P0 bits
-#define P0_EPD_BS1         0x01  // P0.0
-#define P0_TP6             0x02
-#define P0_EPD_nCS1        0x04  // some boards needing two EPD cs
-#define P0_EEPROM_CLK      0x08
-#define P0_EEPROM_MOSI     0x10
-#define P0_EEPROM_MISO     0x20
-#define P0_EPD_nENABLE     0x40
-#define P0_EPD_D_nCMD      0x80
-
-// P1 bits
-#define P1_EPD_BUSY        0x01  // P1.0
-#define P1_EPD_nCS0        0x02
-#define P1_EPD_nRESET      0x04
-#define P1_EPD_SCK         0x08
-#define P1_BIT_4           0x10  // unknown usage, n/c on some boards
-#define P1_EPD_DI          0x20
-#define P1_SERIAL_OUT      0x40
-#define P1_SERIAL_IN       0x80
-
-// P2 bits
-#define P2_EEPROM_nCS      0x01  // P2.0
-#define P2_DBG_DAT         0x02
-#define P2_DBG_CLK         0x04
-#define P2_XOSC32_Q1       0x08
-#define P2_XOSC32_Q2       0x10
+#define EEPROM_FACTORY_WAVEFORM_ADR (0x02000UL)
 
 extern uint8_t __xdata mSelfMac[];
 extern char __xdata gMacString[17];
 
 extern __xdata __at (0xfda2) uint8_t gTempBuf320[320];
-
+extern __bit gEPD_PowerSwitchable;
+// 4 magic bytes at beginning of LUT is SPI flash
+extern const uint8_t __code gWfMagic[];
 /* SDCC 4.2 emits unused out-of-line copies of static inline functions.
  * Statement macros retain the SPI timing without those duplicate bodies. */
 #define screenPrvWaitByteSent() do { \

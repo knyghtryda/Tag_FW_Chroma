@@ -9,11 +9,10 @@
 #include "settings.h"
 #include "logging.h"
 #include "timer.h"
+#include "flashcopy.h"
 
-#define pHARD_CODED_SN  ((const void __xdata*) &gDefaultEEPROM[8])
-
-void LoadGlobalsFromEEPROM();
-void ResetFactoryNVRAM(void);
+void LoadGlobalsFromEEPROM(void);
+void SetSn(void);
 
 char __xdata gMacString[17];
 // Set when the factory NVRAM must be (re)written: no valid SN in it, or a
@@ -70,27 +69,21 @@ void boardInitStage2(void)
 #endif
    LoadGlobalsFromEEPROM();
 #ifdef RELEASE_BUILD
-// A single failed read must not wipe the factory NVRAM: after a bouncy
-// battery insertion the SPI flash may not be ready yet, so retry first.
+// After a bouncy battery insertion the SPI flash may not be ready yet, 
+// so retry first after a delay.
    for(uint8_t Retry = 0; gEEpromFailure && Retry < 3; Retry++) {
       timerDelay(TIMER_TICKS_PER_SECOND / 10);
       eepromWakeFromPowerdown();
       LoadGlobalsFromEEPROM();
    }
-// Only write the NVRAM if the flash answers, otherwise the decision is based
-// on reads of a flash that isn't there.  main() then shows the "no EEPROM"
-// screen, and the NVRAM is read again when the battery is reinserted.
-   if(gEEpromFailure && eepromResponds()) {
-   // Not good!  Try to set defaults so we can communicate
-      NV_DATA_LOG("First call to LoadGlobalsFromEEPROM failed\n");
-      ResetFactoryNVRAM();
-   // Try to load globals again
-      LoadGlobalsFromEEPROM();
-      if(gEEpromFailure) {
-         NV_DATA_LOG("Second call to LoadGlobalsFromEEPROM failed\n");
-      }
-   }
 #endif
+
+   if(gEEpromFailure) {
+   // Couldn't get SN from EEPROM, set default
+      LOG("Default ");
+      u64_copyFromCode(gTempBuf320,&gDefaultEEPROM[6]);
+      SetSn();
+   }
 
    powerDown(INIT_EEPROM);
 // On some board (Chroma29 for example) we don't know how to deal
@@ -107,28 +100,42 @@ void LoadGlobalsFromEEPROM()
 // Only the first 6 charcters are used.
    gEEpromFailure = true;  // Assume the worse !
       
+#ifdef SCREEN_EXPECTS_VCOM
+   if(prvReadSetting(0x23,&mScreenVcom,1) < 0) {
+      NV_DATA_LOG("failed to get VCOM\n");
+   // use default.  TODO actually measure it and save if in NVRAM
+      mScreenVcom = DEFAULT_VCOM;
+   }
+   NV_DATA_LOG("VCOM: 0x%02x\n", mScreenVcom);
+#endif
+   
+   if(prvReadSetting(0x12,&mAdcSlope,2) < 0) {
+      NV_DATA_LOG("failed to get ADC slope\n");
+      mAdcSlope = DEFAULT_ADC_SLOPE;
+   }
+   NV_DATA_LOG("ADC slope %d\n",mAdcSlope);
+
+   if(prvReadSetting(0x09,&mAdcIntercept,2) < 0) {
+      NV_DATA_LOG("failed to get ADC intercept\n");
+      mAdcIntercept = DEFAULT_ADC_INTERCEPT;
+   }
+   NV_DATA_LOG("ADC mAdcIntercept %d\n",mAdcIntercept);
+
    if(prvReadSetting(0x2a,gTempBuf320,7) < 0 && 
       prvReadSetting(1,gTempBuf320,6) < 0) 
-   {  // Couldn't get SN from factory EEPROM, set to the hardcoded value 
+   {  // Couldn't get SN from factory EEPROM
       NV_DATA_LOG("failed to get SN\n");
       return;
    }
 // Got the SN
-#ifdef RELEASE_BUILD
-   xMemSet(&gTempBuf320[16],0x00,4);
+   SetSn();
 
-// If the built in default SN has been patched make sure it matches the SN
-// in EEPROM.  This allows recovery from accidentially programming the same
-// SN into two displays
-   if(!xMemEqual4(pHARD_CODED_SN,&gTempBuf320[16]) &&
-      !xMemEqual4(pHARD_CODED_SN,&gTempBuf320[2]))
-   {  // The hardcoded SN is not the default (all zeros) and the SN in
-      // EEPROM does not match, set EEPROM to the (new) defaults
-      NV_DATA_LOG("Set SN to patched value\n");
-      return;
-   }
-#endif
+// All is good, don't use default SN
+   gEEpromFailure = false;
+}
 
+void SetSn()
+{
    mSelfMac[7] = 0x44;
    mSelfMac[6] = 0x67;
    mSelfMac[3] = gTempBuf320[2];
@@ -159,31 +166,7 @@ void LoadGlobalsFromEEPROM()
    /* The formatter's addressed 64-bit hex mode preserves all leading zeros
     * and emits the same sixteen uppercase digits, most-significant byte first. */
    spr(gMacString,"%*016llX",(uintptr_near_t)mSelfMac);
-#ifdef SCREEN_EXPECTS_VCOM
-   if(prvReadSetting(0x23,&mScreenVcom,1) < 0) {
-      NV_DATA_LOG("failed to get VCOM\n");
-   // keep the SN, a missing calibration value is no reason to reset the NVRAM
-      mScreenVcom = DEFAULT_VCOM;
-   }
-   NV_DATA_LOG("VCOM: 0x%02x\n", mScreenVcom);
-#endif
-   
-   if(prvReadSetting(0x12,&mAdcSlope,2) < 0) {
-      NV_DATA_LOG("failed to get ADC slope\n");
-      mAdcSlope = DEFAULT_ADC_SLOPE;
-   }
-   NV_DATA_LOG("ADC slope %d\n",mAdcSlope);
-
-   if(prvReadSetting(0x09,&mAdcIntercept,2) < 0) {
-      NV_DATA_LOG("failed to get ADC intercept\n");
-      mAdcIntercept = DEFAULT_ADC_INTERCEPT;
-   }
-   NV_DATA_LOG("ADC mAdcIntercept %d\n",mAdcIntercept);
-
-// All is good, don't reset the EEPROM
-   gEEpromFailure = false;
 }
-
 
 //copied to ram, after update has been verified, interrupts have been disabled, 
 //and eepromReadStart() has been called.
@@ -206,73 +189,13 @@ static uint32_t prvUpdateApplierGet(void) __naked
       //erase all flash
       "  clr   _FADDRH           \n"
       "  clr   _FADDRL           \n"   
-      "00001$:                \n"
-      "  orl   _FCTL, #0x01         \n"
-      "  nop                     \n"   //as per datasheet
-      "00002$:                \n"
-      "  mov   A, _FCTL          \n"
-      "  jb    A.7, 00002$       \n"
-      "  inc   _FADDRH           \n"
-      "  inc   _FADDRH           \n"
-      "  djnz  B, 00001$            \n"
+      FLASH_ERASE_PAGES_ASM
       
       //write all 32K
       //due to the 40 usec timeout, we wait each time to avoid it
       "  mov   DPTR, #0       \n"
       
-      "00003$:                \n"
-      "  mov   _FADDRH, DPH         \n"
-      "  mov   _FADDRL, DPL         \n"
-      "  inc   DPTR              \n"
-      "  mov   _FWT, #0x22       \n"
-      
-      //get two bytes
-   
-      "   mov   B, #2               \n"
-      
-      "00090$:                \n"
-      "  mov   _U1DBUF, #0x00    \n"
-      
-      "00091$:                \n"
-      "  mov   A, _U1CSR            \n"
-      "  jnb   A.1, 00091$       \n"
-      
-      "  anl   _U1CSR, #~0x02    \n"
-      
-      "00092$:                \n"
-      "  mov   A, _U1CSR            \n"
-      "  jb    A.0, 00092$       \n"
-      
-      "  push  _U1DBUF           \n"
-      "  djnz  B, 00090$            \n"
-      
-      //write two bytes
-      "  orl   _FCTL, #0x02         \n"
-      
-      //wait for fwbusy to go low
-      "00012$:                \n"
-      "  mov   A, _FCTL          \n"
-      "  jb    A.6, 00012$       \n"
-      
-      "  pop   A                 \n"
-      "  pop   _FWDATA           \n"
-      "  mov   _FWDATA, A        \n"
-      
-      //wait for swbusy to be low
-      "00004$:                \n"
-      "  mov   A, _FCTL          \n"
-      "  jb    A.6, 00004$       \n"
-      
-      "  anl   _FCTL, #~0x02        \n"
-      
-      //wait for busy to be low
-      "00005$:                \n"
-      "  mov   A, _FCTL          \n"
-      "  jb    A.7, 00005$       \n"
-      
-      //loop for next two bytes
-      "  mov   A, DPH            \n"
-      "  cjne  A, #0x40, 00003$     \n"
+      FLASH_WRITE_FROM_SPI_ASM
       
       //done
    
@@ -301,36 +224,6 @@ void selfUpdate(void)
       "  clr a                \n"
       "  jmp @a+dptr             \n"
    );
-}
-
-void clockingAndIntsInit(void)
-{
-   uint8_t i, j;
-   
-   IEN0 = 0;
-   IEN1 = 0;
-   IEN2 = 0;
-
-// enable cache and prefetch
-   MEMCTR = 0; 
-   
-   SLEEP = 0;              //SLEEP.MODE = 0 to use HFXO
-   while (!(SLEEP & SLEEP_HFRC_S));   //wait for HFRC to stabilize
-// high speed RC osc, timer clock is 203.125KHz, 13MHz system clock
-//   CLKCON = 0x79;          //high speed RC osc, timer clock is 203.125KHz, 13MHz system clock
-   CLKCON = CLKCON_OSC | CLKCON_TICKSPD(7) | CLKCON_CLKSPD(1);
-   while (!(SLEEP & SLEEP_XOSC_S));   //wait for HFXO to stabilize
-   
-   //we need to delay more (chip erratum)
-   for (i = 0; i != 128; i++) for (j = 0; j != 128; j++) __asm__ ("nop");
-   
-// switch to HFXO
-   CLKCON = CLKCON_CLKSPD(1) | CLKCON_TICKSPD(7);
-   while(CLKCON & CLKCON_OSC);   //wait for the switch
-// Select 26MHz system clock and 203.125KHz timer clock
-   CLKCON = CLKCON_CLKSPD(0) | CLKCON_TICKSPD(7);
-
-   SLEEP = SLEEP_OSC_PD;   //power down the unused (HFRC oscillator)
 }
 
 #if !defined(RELEASE_BUILD)

@@ -32,6 +32,7 @@ void DrawFwVer(void);
 void SetDrawingDefaults(void);
 void DisplayLogo(void);
 void DisplayLowestVbat(void);
+void DisplayEnableAndLut(void);
 
 static const char __code gNewLine[] = "\n";
 static const char __code gDoubleSpace[] = "\n\n";
@@ -117,6 +118,13 @@ void DrawAfterFlashScreenSaver()
    epdpr(gDoubleSpace);
    printBarcode(gMacString,gSaveX,gCharY);
 #endif
+#elif defined(UI_SMALL)
+// 212 x 104, no logo
+   epdpr("\bOpenEPaperLink\n\b");
+   epdpr("Asleep. To wake me remove\n");
+   epdpr("the batteries, short the\n");
+   epdpr("contacts and reinsert them.\n");
+   DrawTagMac();
 #else
    epdpr("\t\bOpenEPaperLink\n\b");
 // 2.9" or smaller
@@ -144,9 +152,13 @@ void afterFlashScreenSaver()
 }
 
 
-void DrawTagMac() 
+void DrawTagMac()
 {
+#ifdef UI_SMALL
+   epdpr("MAC %s",gMacString);
+#else
    epdpr("Tag MAC: %s",gMacString);
+#endif
 }
 
 void DrawFwVer()
@@ -165,6 +177,16 @@ void DrawSplashScreen()
    SetDrawingDefaults();
    DisplayLogo();
 
+#ifdef UI_SMALL
+// 212 x 104: 6 lines left of the logo
+   gCharY = 4;
+   epdpr("Starting . . .\n");
+   DrawFwVer();
+   epdpr("\nVBat: %d mV\n",gBootBattV);
+   epdpr("Temp: %dC\n",gTemperature);
+   DisplayEnableAndLut();
+   DrawTagMac();
+#else
 #if DISPLAY_WIDTH <= 296
 // 2.9" or smaller
    epdpr("Starting . . .\n\n");
@@ -176,13 +198,15 @@ void DrawSplashScreen()
 #endif
    DrawFwVer();
    epdpr("\nVBat: %d mV\n",gBootBattV);
-   epdpr("Temperature: %dC\n\n",gTemperature);
+   epdpr("Temperature: %dC\n",gTemperature);
+   DisplayEnableAndLut();
    DrawTagMac();
 
 #ifndef DISABLE_BARCODES
    epdpr(gDoubleSpace);
    printBarcode(gMacString,gLeftMargin,gCharY);
 #endif
+#endif   // UI_SMALL
 }
 
 void showSplashScreen()
@@ -218,7 +242,11 @@ void DrawFailedUpdate()
 {
    SetDrawingDefaults();
    DisplayLogo();
+#ifdef UI_SMALL
+   gCharY = 20;
+#else
    gLargeFont = EPD_SIZE_DOUBLE;
+#endif
    epdpr("\fOTA FAILED :(\n\n");
    gWinColor = EPD_COLOR_RED;
    switch(gUpdateErr) {
@@ -254,9 +282,14 @@ void DrawAPFound()
 #else
    epdpr("Waiting for data . . .\n");
 #endif
+
+#ifdef UI_SMALL
+   epdpr("AP %02X%02X",APmac[7],APmac[6]);
+#else
    epdpr("\nFound the following AP:");
    gBmpY = gCharY;
    epdpr("\nAP MAC: %02X%02X",APmac[7],APmac[6]);
+#endif
    epdpr("%02X%02X",APmac[5],APmac[4]);
    epdpr("%02X%02X",APmac[3],APmac[2]);
    epdpr("%02X%02X",APmac[1],APmac[0]);
@@ -266,23 +299,30 @@ void DrawAPFound()
 #else
    gBmpX = gCharX + (DISPLAY_WIDTH - gCharX) / 2;
 #endif
+#ifdef UI_SMALL
+   epdpr("\nCh:%d RSSI:%d LQI:%d\n",gCurrentChannel,mLastRSSI,mLastLqi);
+#else
    epdpr("\nCh: %d RSSI: %d LQI: %d\n",gCurrentChannel,mLastRSSI,mLastLqi);
+#endif
 
 #if DISPLAY_WIDTH <=  296
 // 2.9" or smaller
 // Don't have room for all three battery readings, display the lowest
    DisplayLowestVbat();
+   DisplayEnableAndLut();
    DrawFwVer();
 #else
 // wider than 2.9"
 #if DISPLAY_WIDTH >= 640
 // 7.4" or wider
-   epdpr("\nVBat: %d mV, Txing: %d mV, Displaying: %d mV\n\n",
+   epdpr("\nVBat: %d mV, Txing: %d mV, Displaying: %d mV\n",
          gBattV,gTxBattV,gRefreshBattV);
+   DisplayEnableAndLut();
 #else
 // between 2.9" and 7.4"
-   epdpr("\nVBat: %d mV, Txing: %d mV\nDisplaying: %d mV\n\n",
+   epdpr("\nVBat: %d mV, Txing: %d mV\nDisplaying: %d mV\n",
          gBattV,gTxBattV,gRefreshBattV);
+   DisplayEnableAndLut();
 #endif
    DrawFwVer();
    epdpr(gDoubleSpace);
@@ -317,6 +357,14 @@ void DrawNoAP()
 // receive bitmap is 56 x 56, center it on the display
    gSaveX = gCharX;
    gBmpY = gCharY;
+#elif defined(UI_SMALL)
+// 212 x 104: 3 lines, the icons below them
+   gCharY = 4;
+   epdpr("No AP found :(\n");
+   epdpr("Will retry in a\n");
+   epdpr("little while . . .");
+   gSaveX = 0;
+   gBmpY = gCharY + FONT_HEIGHT;
 #else
 // 2.9" or smaller
    epdpr("\bNo AP found :(\n\b\n");
@@ -329,7 +377,7 @@ void DrawNoAP()
 #ifndef LEAN_VERSION
 // receive bitmap is 56 x 56, center between the end of the current line
 // and the right side of the display
-   gBmpX = gSaveX + (DISPLAY_WIDTH - gSaveX - 56)/2;
+   gBmpX = gSaveX + (TEXT_WIDTH - gSaveX - 56)/2;
    if(gBmpX & 0x7) {
    // round back to byte boundary
       gBmpX -= (gBmpX & 0x7);
@@ -383,12 +431,19 @@ void DrawNoEEPROM()
    gLargeFont = EPD_SIZE_DOUBLE;
 #endif
 
+#ifdef UI_SMALL
+   gCharY = 4;
+   epdpr("\fEEPROM FAILED :(\n");
+   epdpr("\fSleeping forever . . .\n");
+   gCharY += 8;
+#else
    epdpr("\fEEPROM FAILED :(\n\n");
    epdpr("\fSleeping forever . . .\n\n");
+#endif
 
 #ifndef LEAN_VERSION
 // failed bitmap is 48 x 48
-   gBmpX = (DISPLAY_WIDTH - 48)/2;
+   gBmpX = (TEXT_WIDTH - 48)/2;
    gBmpY = gCharY;
    gWinColor = EPD_COLOR_RED;
 
@@ -471,4 +526,25 @@ void DisplayLowestVbat()
    epdpr("VBat: %d mV\n",gRefreshBattV != 0 && gRefreshBattV < gTxBattV ? 
          gRefreshBattV:gTxBattV);
 }
+
+void DisplayEnableAndLut()
+{
+   epdpr("EpdPwr %d, ",gEPD_PowerSwitchable);
+   eepromRead(EEPROM_FACTORY_WAVEFORM_ADR,gTempBuf320,sizeof(gTempBuf320));
+
+   if(gTempBuf320[0] == gWfMagic[0] 
+      && gTempBuf320[1] == gWfMagic[1]
+      && gTempBuf320[2] == gWfMagic[2]
+      && gTempBuf320[3] == gWfMagic[3])
+   {
+      epdpr("LUT v%d.%d\n",gTempBuf320[4],gTempBuf320[5]);
+   }
+   else {
+      epdpr("NO LUT\n");
+   // Dump unknown / invalid LUT for debugging
+      LOGA("LUT:\n");
+      DumpHex(gTempBuf320,sizeof(gTempBuf320));
+   }
+}
+
 #endif
