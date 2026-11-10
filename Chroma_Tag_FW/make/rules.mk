@@ -71,8 +71,11 @@ flash:	all
 reset:	
 	cc-tool --reset
 
-release: $(PREBUILT_DIR) ${HDR_TOOL} all $(RELEASE_BINS) 
-	(cd $(PREBUILT_DIR);git add $(RELEASE_BINS))
+release: $(PREBUILT_DIR) ${HDR_TOOL} all $(RELEASE_BINS)
+	# '-' prefix: ignore failure. Staging is a no-op when PREBUILT_DIR is
+	# gitignored (as in this repo); it still works in layouts where releases
+	# is a tracked binaries checkout.
+	-(cd $(PREBUILT_DIR);git add $(RELEASE_BINS))
 
 DEPFILES := $(SOURCES:%.c=$(BUILD_DIR)/%.d)
 
